@@ -387,26 +387,134 @@ class _ManageRoommatesScreenState extends State<ManageRoommatesScreen> {
 // ------------------------------------------------------------
 // PART 2: TRIPS MODULE (placeholder — teammate's job)
 // ------------------------------------------------------------
-class TripsScreen extends StatelessWidget {
+  class TripsScreen extends StatefulWidget {
   const TripsScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return const Center(
-      child: Padding(
-        padding: EdgeInsets.all(24.0),
-        child: Text(
-          'Trips go here.\n\nTODO:\n- Trip type selector '
-          '(beach/hiking/business/custom)\n'
-          '- Auto-generate checklist per trip type\n'
-          '- Edit + save custom checklists',
-          textAlign: TextAlign.center,
-        ),
-      ),
-    );
+  State<TripsScreen> createState() => _TripsScreenState();
   }
-}
 
+  class _TripsScreenState extends State<TripsScreen> {
+  String _selectedTripType = 'Beach';
+
+  final Map<String, List<String>> _tripChecklists = {
+  'Beach': [
+  'Swimsuit',
+  'Sunscreen',
+  'Towel',
+  'Sunglasses',
+  'Sandals',
+  'Water bottle',
+  ],
+  'Hiking': [
+  'Hiking boots',
+  'Backpack',
+  'Water bottle',
+  'Snacks',
+  'First aid kit',
+  'Map',
+  ],
+  'Business': [
+  'Laptop',
+  'Laptop charger',
+  'Business clothes',
+  'Dress shoes',
+  'Notebook',
+  'Toiletries',
+  ],
+  'Custom': [],
+  };
+
+  late List<String> _currentChecklist;
+
+  @override
+  void initState() {
+  super.initState();
+  _currentChecklist = List.of(_tripChecklists[_selectedTripType]!);
+  }
+
+  void _changeTripType(String? newType) {
+  if (newType == null) return;
+
+  setState(() {
+  _selectedTripType = newType;
+  _currentChecklist = List.of(_tripChecklists[newType]!);
+  });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+  return Scaffold(
+  appBar: AppBar(
+  title: const Text('Trip Packing'),
+  ),
+  body: Padding(
+  padding: const EdgeInsets.all(16.0),
+  child: Column(
+  crossAxisAlignment: CrossAxisAlignment.start,
+  children: [
+  const Text(
+  'Trip Type',
+  style: TextStyle(
+  fontSize: 20,
+  fontWeight: FontWeight.bold,
+  ),
+  ),
+  const SizedBox(height: 8),
+
+  DropdownButtonFormField<String>(
+  value: _selectedTripType,
+  decoration: const InputDecoration(
+  border: OutlineInputBorder(),
+  ),
+  items: _tripChecklists.keys.map((type) {
+  return DropdownMenuItem(
+  value: type,
+  child: Text(type),
+  );
+  }).toList(),
+  onChanged: _changeTripType,
+  ),
+
+  const SizedBox(height: 24),
+
+  Text(
+  '$_selectedTripType Packing List',
+  style: const TextStyle(
+  fontSize: 20,
+  fontWeight: FontWeight.bold,
+  ),
+  ),
+
+  const SizedBox(height: 8),
+
+  Expanded(
+  child: _currentChecklist.isEmpty
+  ? const Center(
+  child: Text(
+  'No items yet. Add items to your custom checklist.',
+  ),
+  )
+      : ListView.builder(
+  itemCount: _currentChecklist.length,
+  itemBuilder: (context, index) {
+  return Card(
+  child: ListTile(
+  leading: const Icon(
+  Icons.check_box_outline_blank,
+  ),
+  title: Text(_currentChecklist[index]),
+  ),
+  );
+  },
+  ),
+  ),
+  ],
+  ),
+  ),
+  );
+  }
+  }
 // ------------------------------------------------------------
 // PART 3: STATS/DASHBOARD + DATA LAYER (placeholder — leader's job)
 // ------------------------------------------------------------
