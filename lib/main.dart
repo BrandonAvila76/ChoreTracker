@@ -475,7 +475,7 @@ class _ManageRoommatesScreenState extends State<ManageRoommatesScreen> {
   const SizedBox(height: 8),
 
   DropdownButtonFormField<String>(
-  value: _selectedTripType,
+  initialValue: _selectedTripType,
   decoration: const InputDecoration(
   border: OutlineInputBorder(),
   ),
