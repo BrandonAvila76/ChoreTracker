@@ -36,7 +36,7 @@ void main() {
 
     await tester.tap(_navTab('Trips'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('Trips go here'), findsOneWidget);
+    expect(find.text('Trip Packing'), findsOneWidget);
 
     await tester.tap(_navTab('Stats'));
     await tester.pumpAndSettle();
