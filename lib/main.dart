@@ -399,6 +399,8 @@ class _ManageRoommatesScreenState extends State<ManageRoommatesScreen> {
 
   final Set<String> _checkedItems = {};
 
+  final TextEditingController _itemController = TextEditingController();
+
   final Map<String, List<String>> _tripChecklists = {
   'Beach': [
   'Swimsuit',
@@ -489,6 +491,37 @@ class _ManageRoommatesScreenState extends State<ManageRoommatesScreen> {
   ),
 
   const SizedBox(height: 8),
+
+    Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _itemController,
+            decoration: const InputDecoration(
+              labelText: 'Add packing item',
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        ElevatedButton(
+          onPressed: () {
+            final newItem = _itemController.text.trim();
+
+            if (newItem.isNotEmpty) {
+              setState(() {
+                _tripChecklists[_selectedTripType]!.add(newItem);
+                _itemController.clear();
+              });
+            }
+          },
+          child: const Text('Add Item'),
+        ),
+      ],
+    ),
+
+    const SizedBox(height: 8),
+
 
   Expanded(
   child: _currentChecklist.isEmpty
