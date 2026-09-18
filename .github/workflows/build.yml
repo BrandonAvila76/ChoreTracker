@@ -17,4 +17,11 @@ jobs:
           channel: 'stable'
 
       - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
       - run: flutter build apk --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nestmates-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
