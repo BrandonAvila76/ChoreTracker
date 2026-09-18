@@ -397,6 +397,8 @@ class _ManageRoommatesScreenState extends State<ManageRoommatesScreen> {
   class _TripsScreenState extends State<TripsScreen> {
   String _selectedTripType = 'Beach';
 
+  final Set<String> _checkedItems = {};
+
   final Map<String, List<String>> _tripChecklists = {
   'Beach': [
   'Swimsuit',
@@ -498,14 +500,21 @@ class _ManageRoommatesScreenState extends State<ManageRoommatesScreen> {
       : ListView.builder(
   itemCount: _currentChecklist.length,
   itemBuilder: (context, index) {
-  return Card(
-  child: ListTile(
-  leading: const Icon(
-  Icons.check_box_outline_blank,
-  ),
-  title: Text(_currentChecklist[index]),
-  ),
-  );
+    return Card(
+      child: CheckboxListTile(
+        title: Text(_currentChecklist[index]),
+        value: _checkedItems.contains(_currentChecklist[index]),
+        onChanged: (bool? value) {
+          setState(() {
+            if (value == true) {
+              _checkedItems.add(_currentChecklist[index]);
+            } else {
+              _checkedItems.remove(_currentChecklist[index]);
+            }
+          });
+        },
+      ),
+    );
   },
   ),
   ),
