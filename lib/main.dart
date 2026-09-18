@@ -434,7 +434,7 @@ class _ManageRoommatesScreenState extends State<ManageRoommatesScreen> {
   @override
   void initState() {
   super.initState();
-  _currentChecklist = List.of(_tripChecklists[_selectedTripType]!);
+  _currentChecklist = _tripChecklists[_selectedTripType]!;
   }
 
   void _changeTripType(String? newType) {
@@ -534,18 +534,30 @@ class _ManageRoommatesScreenState extends State<ManageRoommatesScreen> {
   itemCount: _currentChecklist.length,
   itemBuilder: (context, index) {
     return Card(
-      child: CheckboxListTile(
+      child: ListTile(
+        leading: Checkbox(
+          value: _checkedItems.contains(_currentChecklist[index]),
+          onChanged: (bool? value) {
+            setState(() {
+              if (value == true) {
+                _checkedItems.add(_currentChecklist[index]);
+              } else {
+                _checkedItems.remove(_currentChecklist[index]);
+              }
+            });
+          },
+        ),
         title: Text(_currentChecklist[index]),
-        value: _checkedItems.contains(_currentChecklist[index]),
-        onChanged: (bool? value) {
-          setState(() {
-            if (value == true) {
-              _checkedItems.add(_currentChecklist[index]);
-            } else {
-              _checkedItems.remove(_currentChecklist[index]);
-            }
-          });
-        },
+        trailing: IconButton(
+          icon: const Icon(Icons.delete_outline),
+          onPressed: () {
+            setState(() {
+              final item = _currentChecklist[index];
+              _checkedItems.remove(item);
+              _currentChecklist.removeAt(index);
+            });
+          },
+        ),
       ),
     );
   },
