@@ -1,7 +1,12 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 
-void main() {
+import 'data/nestmates_store.dart';
+import 'screens/dashboard_screen.dart';
+import 'screens/stats_screen.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await NestmatesStore.instance.load();
   runApp(const NestmatesApp());
 }
 
@@ -14,6 +19,11 @@ class NestmatesApp extends StatelessWidget {
       title: 'Nestmates',
       theme: ThemeData(
         colorSchemeSeed: Colors.teal,
+        useMaterial3: true,
+      ),
+      darkTheme: ThemeData(
+        colorSchemeSeed: Colors.teal,
+        brightness: Brightness.dark,
         useMaterial3: true,
       ),
       home: const HomeShell(),
@@ -32,23 +42,35 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int _selectedIndex = 0;
 
-  static const List<Widget> _screens = [
-    ChoresScreen(),
-    TripsScreen(),
-    StatsScreen(),
-  ];
+  void _goToTab(int index) => setState(() => _selectedIndex = index);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Nestmates')),
-      body: _screens[_selectedIndex],
+      // IndexedStack keeps each tab's scroll position and text fields alive.
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: [
+          DashboardScreen(onNavigate: _goToTab),
+          const ChoresScreen(),
+          // TripsScreen is still the bare placeholder, so the shell supplies
+          // its app bar. Drop this wrapper once it has a Scaffold of its own.
+          Scaffold(
+            appBar: AppBar(title: const Text('Trips')),
+            body: const TripsScreen(),
+          ),
+          const StatsScreen(),
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) {
-          setState(() => _selectedIndex = index);
-        },
+        onDestinationSelected: _goToTab,
         destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: 'Home',
+          ),
           NavigationDestination(
             icon: Icon(Icons.cleaning_services),
             label: 'Chores',
@@ -77,80 +99,31 @@ class ChoresScreen extends StatefulWidget {
   State<ChoresScreen> createState() => _ChoresScreenState();
 }
 
-// A single chore: what it is, who it's assigned to, whether it's
-// done this round, and how many rounds in a row it's been completed.
-class Chore {
-  Chore({required this.name, required this.assignedTo});
-
-  String name;
-  String assignedTo;
-  bool completed = false;
-  int streak = 0;
-}
-
 class _ChoresScreenState extends State<ChoresScreen> {
-  // Roommates start empty — add them from the "Manage Roommates" screen.
-  List<String> _roommates = ['Alex', 'Sam', 'Jordan'];
-
-  late List<Chore> _chores = [
-    Chore(name: 'Dishes', assignedTo: _roommates[0]),
-    Chore(name: 'Trash', assignedTo: _roommates[1]),
-    Chore(name: 'Vacuum', assignedTo: _roommates[2]),
-  ];
-
+  // Chores, roommates and streaks all live in the shared store now, so the
+  // Stats screen sees every change without this screen telling it anything.
+  final NestmatesStore _store = NestmatesStore.instance;
   final TextEditingController _newChoreController = TextEditingController();
-  final Random _random = Random();
+
+  @override
+  void dispose() {
+    _newChoreController.dispose();
+    super.dispose();
+  }
 
   void _addChore(String name) {
     if (name.trim().isEmpty) return;
-    if (_roommates.isEmpty) {
+    if (_store.roommates.isEmpty) {
       _showSnackBar('Add at least one roommate first.');
       return;
     }
-    setState(() {
-      // New chores start assigned to a random roommate.
-      final assignee = _roommates[_random.nextInt(_roommates.length)];
-      _chores.add(Chore(name: name.trim(), assignedTo: assignee));
-    });
+    _store.addChore(name);
     _newChoreController.clear();
   }
 
-  void _removeChore(int index) {
-    setState(() {
-      _chores.removeAt(index);
-    });
-  }
-
-  void _toggleComplete(int index) {
-    setState(() {
-      final chore = _chores[index];
-      chore.completed = !chore.completed;
-      if (chore.completed) {
-        chore.streak++;
-      } else {
-        chore.streak = chore.streak > 0 ? chore.streak - 1 : 0;
-      }
-    });
-  }
-
-  // Randomly reassigns every chore to any roommate (with replacement),
-  // and resets "completed" for the new round.
-  void _randomlyAssignAll() {
-    if (_roommates.isEmpty) {
-      _showSnackBar('Add at least one roommate first.');
-      return;
-    }
-    setState(() {
-      for (final chore in _chores) {
-        chore.assignedTo = _roommates[_random.nextInt(_roommates.length)];
-        chore.completed = false;
-      }
-    });
-  }
-
   // Lets the user manually pick who a single chore is assigned to.
-  Future<void> _pickAssignee(int index) async {
-    if (_roommates.isEmpty) {
+  Future<void> _pickAssignee(String choreId) async {
+    if (_store.roommates.isEmpty) {
       _showSnackBar('Add at least one roommate first.');
       return;
     }
@@ -159,7 +132,7 @@ class _ChoresScreenState extends State<ChoresScreen> {
       builder: (context) {
         return SimpleDialog(
           title: const Text('Assign to'),
-          children: _roommates.map((name) {
+          children: _store.roommates.map((name) {
             return SimpleDialogOption(
               onPressed: () => Navigator.pop(context, name),
               child: Text(name),
@@ -168,34 +141,46 @@ class _ChoresScreenState extends State<ChoresScreen> {
         );
       },
     );
-    if (chosen != null) {
-      setState(() {
-        _chores[index].assignedTo = chosen;
-      });
-    }
+    if (chosen != null) _store.assignChore(choreId, chosen);
   }
 
-  // Opens the roommate management screen and syncs any changes back.
+  // Opens the roommate management screen and syncs any changes back. The
+  // store re-homes any chore whose owner was deleted.
   Future<void> _openManageRoommates() async {
     final updated = await Navigator.push<List<String>>(
       context,
       MaterialPageRoute(
-        builder: (context) => ManageRoommatesScreen(roommates: _roommates),
+        builder: (context) =>
+            ManageRoommatesScreen(roommates: _store.roommates),
       ),
     );
-    if (updated != null) {
-      setState(() {
-        _roommates = updated;
-        // If a roommate was removed, reassign their chores randomly
-        // among whoever's left so nothing points at a deleted name.
-        for (final chore in _chores) {
-          if (!_roommates.contains(chore.assignedTo)) {
-            chore.assignedTo = _roommates.isNotEmpty
-                ? _roommates[_random.nextInt(_roommates.length)]
-                : 'Unassigned';
-          }
-        }
-      });
+    if (updated != null) _store.setRoommates(updated);
+  }
+
+  Future<void> _confirmNewRound() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Start week ${_store.round + 1}?'),
+        content: const Text(
+          'Finished chores bank a streak, unfinished ones reset to zero, '
+          'and everything rotates to the next roommate.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Start week'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed ?? false) {
+      _store.startNewRound();
+      _showSnackBar('Week ${_store.round} started — chores rotated.');
     }
   }
 
@@ -207,85 +192,102 @@ class _ChoresScreenState extends State<ChoresScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Chores'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.people_outline),
-            tooltip: 'Manage roommates',
-            onPressed: _openManageRoommates,
+    return ListenableBuilder(
+      listenable: _store,
+      builder: (context, _) {
+        final chores = _store.chores;
+        return Scaffold(
+          appBar: AppBar(
+            title: Text('Chores · Week ${_store.round}'),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.people_outline),
+                tooltip: 'Manage roommates',
+                onPressed: _openManageRoommates,
+              ),
+              IconButton(
+                icon: const Icon(Icons.shuffle),
+                tooltip: 'Randomly assign all',
+                onPressed:
+                    _store.roommates.isEmpty ? null : _store.randomlyAssignAll,
+              ),
+              IconButton(
+                icon: const Icon(Icons.event_repeat),
+                tooltip: 'Start a new week',
+                onPressed: chores.isEmpty ? null : _confirmNewRound,
+              ),
+            ],
           ),
-          IconButton(
-            icon: const Icon(Icons.shuffle),
-            tooltip: 'Randomly assign all',
-            onPressed: _randomlyAssignAll,
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _newChoreController,
-                    decoration: const InputDecoration(
-                      labelText: 'Add a chore',
-                      border: OutlineInputBorder(),
-                    ),
-                    onSubmitted: _addChore,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: () => _addChore(_newChoreController.text),
-                  child: const Text('Add'),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: ListView.builder(
-              itemCount: _chores.length,
-              itemBuilder: (context, index) {
-                final chore = _chores[index];
-                return Card(
-                  margin:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  child: ListTile(
-                    leading: Checkbox(
-                      value: chore.completed,
-                      onChanged: (_) => _toggleComplete(index),
-                    ),
-                    title: Text(chore.name),
-                    subtitle: Text(
-                      'Assigned to ${chore.assignedTo} · streak: ${chore.streak}',
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.person_outline),
-                          tooltip: 'Assign to someone specific',
-                          onPressed: () => _pickAssignee(index),
+          body: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _newChoreController,
+                        decoration: const InputDecoration(
+                          labelText: 'Add a chore',
+                          border: OutlineInputBorder(),
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline),
-                          tooltip: 'Delete chore',
-                          onPressed: () => _removeChore(index),
-                        ),
-                      ],
+                        onSubmitted: _addChore,
+                      ),
                     ),
-                  ),
-                );
-              },
-            ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () => _addChore(_newChoreController.text),
+                      child: const Text('Add'),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: chores.isEmpty
+                    ? const Center(child: Text('No chores yet — add one above.'))
+                    : ListView.builder(
+                        itemCount: chores.length,
+                        itemBuilder: (context, index) {
+                          final chore = chores[index];
+                          return Card(
+                            margin: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 4),
+                            child: ListTile(
+                              leading: Checkbox(
+                                value: chore.completed,
+                                onChanged: (value) => _store.setChoreCompleted(
+                                    chore.id, value ?? false),
+                              ),
+                              title: Text(chore.name),
+                              subtitle: Text(
+                                'Assigned to ${chore.assignedTo}'
+                                '${chore.streak > 0 ? ' · streak: ${chore.streak}' : ''}',
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.person_outline),
+                                    tooltip: 'Assign to someone specific',
+                                    onPressed: () => _pickAssignee(chore.id),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete_outline),
+                                    tooltip: 'Delete chore',
+                                    onPressed: () =>
+                                        _store.removeChore(chore.id),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -313,6 +315,12 @@ class _ManageRoommatesScreenState extends State<ManageRoommatesScreen> {
     _roommates = List.of(widget.roommates);
   }
 
+  @override
+  void dispose() {
+    _newNameController.dispose();
+    super.dispose();
+  }
+
   void _addRoommate(String name) {
     final trimmed = name.trim();
     if (trimmed.isEmpty || _roommates.contains(trimmed)) return;
@@ -336,7 +344,7 @@ class _ManageRoommatesScreenState extends State<ManageRoommatesScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, _roommates),
-            child: const Text('Done', style: TextStyle(color: Colors.white)),
+            child: const Text('Done'),
           ),
         ],
       ),
@@ -408,33 +416,13 @@ class TripsScreen extends StatelessWidget {
 }
 
 // ------------------------------------------------------------
-// PART 3: STATS/DASHBOARD + DATA LAYER (placeholder — leader's job)
+// PART 3: STATS/DASHBOARD + DATA LAYER
 // ------------------------------------------------------------
-class StatsScreen extends StatelessWidget {
-  const StatsScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(
-      child: Padding(
-        padding: EdgeInsets.all(24.0),
-        child: Text(
-          'Stats/history go here.\n\nTODO:\n- Chore completion history + '
-          'streaks display\n- Past trips packed\n'
-          '- Shared data layer (e.g. shared_preferences or sqflite) '
-          'that Chores & Trips both read/write to',
-          textAlign: TextAlign.center,
-        ),
-      ),
-    );
-  }
-}
-
-// ------------------------------------------------------------
-// SHARED DATA LAYER (stub) - leader owns this
-// ------------------------------------------------------------
-class NestmatesData {
-  // TODO: replace with shared_preferences (simple) or sqflite (relational)
-  static final List<Map<String, dynamic>> chores = [];
-  static final List<Map<String, dynamic>> trips = [];
-}
+// Lives in its own files now, so this one stays small:
+//   lib/data/nestmates_store.dart    — shared storage (replaces NestmatesData)
+//   lib/data/models.dart             — Chore, Trip, PackingItem, history
+//   lib/screens/dashboard_screen.dart
+//   lib/screens/stats_screen.dart
+//
+// Trips module: save through NestmatesStore.instance.saveTrip(...) and the
+// Home and Stats screens pick it up automatically. See README.md.
