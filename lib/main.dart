@@ -519,7 +519,23 @@ class _ManageRoommatesScreenState extends State<ManageRoommatesScreen> {
         ),
       ],
     ),
-
+    Align(
+      alignment: Alignment.centerRight,
+      child: TextButton.icon(
+        onPressed: _checkedItems.isEmpty
+            ? null
+            : () {
+          setState(() {
+            _currentChecklist.removeWhere(
+                  (item) => _checkedItems.contains(item),
+            );
+            _checkedItems.clear();
+          });
+        },
+        icon: const Icon(Icons.cleaning_services),
+        label: const Text('Clear Completed'),
+      ),
+    ),
     const SizedBox(height: 8),
 
 
